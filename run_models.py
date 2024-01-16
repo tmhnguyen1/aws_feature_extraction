@@ -10,6 +10,7 @@ import joblib
 import xgboost as xgb
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 import json, os
 import matplotlib.pyplot as plt
 
@@ -19,6 +20,37 @@ from tensorflow.keras.metrics import BinaryAccuracy, Precision, Recall
 from tensorflow.keras.layers import Input, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 
+import gc
+
+
+class MinMaxScalerLayer(tf.keras.layers.Layer):
+    def __init__(self, feature_range=(0, 1), **kwargs):
+        super(MinMaxScalerLayer, self).__init__(**kwargs)
+        self.feature_range = feature_range
+        self.data_min = None
+        self.data_max = None
+        self.trainable = False # turn off parameter training
+
+    def adapt(self, data):
+        data = tf.convert_to_tensor(data)
+        self.data_min = tf.math.reduce_min(data, axis=0)
+        self.data_max = tf.math.reduce_max(data, axis=0)
+
+    def call(self, inputs):
+        if self.data_min is None or self.data_max is None:
+            raise RuntimeError("The layer has not been adapted. Call 'adapt' before using the layer.")
+        
+        inputs = tf.cast(inputs, dtype=tf.float32)
+        scaled_data = (inputs - tf.cast(self.data_min, dtype=tf.float32)) / (tf.cast(self.data_max, dtype=tf.float32) - tf.cast(self.data_min, dtype=tf.float32))
+        return self.feature_range[0] + (scaled_data * (self.feature_range[1] - self.feature_range[0]))
+
+    def get_config(self):
+        config = super(MinMaxScalerLayer, self).get_config()
+        config.update({
+            "feature_range": self.feature_range
+        })
+        return config
+    
 
 def classify(row):
     true, pred = row.true, row.pred
@@ -31,44 +63,32 @@ def classify(row):
     else:
         return 'False Negative'
     
-def create_model(model_name):
-    if model_name == 'xgb':
-        model = XGBClassifier()
-    elif model_name == 'decision_tree':
-        model = DecisionTreeClassifier()
-    elif model_name == 'random_forest':
-        model = RandomForestClassifier()
-    elif model_name == 'lda':
-        model = LinearDiscriminantAnalysis()
-    elif model_name == 'gaussian':
-        model = GaussianProcessClassifier()    
-    elif model_name == 'ann':
-        inputs = Input(shape=500)
-        x = Dense(500, activation='relu')(inputs)
-        x = Dense(200, activation='relu')(x)
-        x = Dropout(0.3)(x)
-        x = Dense(200, activation='relu')(x)
-        x = Dropout(0.3)(x)
-        x = Dense(200, activation='relu')(x)
-        x = Dropout(0.3)(x)
-        x = Dense(200, activation='relu')(x)
-        x = Dropout(0.3)(x)
-        x = Dense(200, activation='relu')(x)
-        output = Dense(1, activation='sigmoid')(x)
-        model = Model(inputs=inputs, outputs=output)
-    else:
-        raise NotImplementedError('This model is not implemented')
+def create_model(X_train, input_shape=500):
+    scaler = MinMaxScalerLayer()
+    scaler.adapt(X_train)
+    inputs = Input(shape=input_shape)
+    scaled_inputs = scaler(inputs)
+    x = Dense(500, activation='relu')(scaled_inputs)
+    x = Dense(200, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(300, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(400, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(100, activation='relu')(x)
+    x = Dropout(0.3)(x)
+    x = Dense(50, activation='relu')(x)
+    output = Dense(1, activation='sigmoid')(x)
+    model = Model(inputs=inputs, outputs=output)
     return model
     
 
-basedir = 'D:/lalamove/lalamove/data/Clean_1s_all_240103/train'
-labels = [7]
-model_names = ['ann'] #['xgb', 'ann', 'lda', 'decision_tree', 'random_forest']
+basedir = 'D:/lalamove/lalamove/data/Clean_extracted_240115/train'
+labels = [5, 6, 7]
+model_names = ['ann'] 
 synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
 model_performance = []
 
-
-# label = 5
 
 for label in labels:
     print('\n\n\nLabel', label)
@@ -82,16 +102,12 @@ for label in labels:
     assert len(X) == len(y), f"Length mismatch {len(X)}, {len(y)}"
 
     for model_name in model_names:
-        # model_name = 'xgb'
-        model = create_model(model_name)
-        print('\n\nmodel_name: ', model_name)
-
         dates = y.date.unique()
-        if model_name == 'ann':
-            dates = dates[11:]
         for chosen in dates:
             for synthetic_percent in synthetic_percent_list:
+                print('\n\nmodel_name: ', model_name)
                 print('\ntest_date ', chosen)
+                print('\nSynthetic percent: ', synthetic_percent)
                 # chosen = dates[-3]
                 test_idx = y[(y.date == chosen) & (y.type == 0)].index
                 train_idx = y[(y.date != chosen) & (y.type == 0)]
@@ -99,25 +115,18 @@ for label in labels:
                 train_idx = pd.concat([train_idx, train_idx_add]).index
                 # train_idx = y[y.date != chosen].index
 
-                X_train_, X_test_ = X.iloc[train_idx].to_numpy(), X.iloc[test_idx].to_numpy()
+                X_train, X_test = X.iloc[train_idx].to_numpy(), X.iloc[test_idx].to_numpy()
                 y_train, y_test = y.iloc[train_idx].label.to_numpy(), y.iloc[test_idx].label.to_numpy()
-                X_train_.shape, X_test_.shape, y_train.shape, y_test.shape
-                scaler = MinMaxScaler()
-                X_train = scaler.fit_transform(X_train_)
-                X_test = scaler.transform(X_test_)
-                X_train.shape, X_test.shape, y_train.shape, y_test.shape, dates[-1]
+                model = create_model(X_train, input_shape=X_train.shape[1])
 
-                if model_name != 'ann':
-                    model.fit(X_train, y_train)
-                else:
-                    model.compile(optimizer=Adam(learning_rate=2e-4),
-                            loss='binary_crossentropy',
-                            metrics=[BinaryAccuracy(name='acc'),
-                                    Precision(name='precision'),
-                                    Recall(name='recall')])
+                model.compile(optimizer=Adam(learning_rate=2e-4),
+                        loss='binary_crossentropy',
+                        metrics=[BinaryAccuracy(name='acc'),
+                                Precision(name='precision'),
+                                Recall(name='recall')])
 
-                    history = model.fit(X_train, y_train, batch_size=256, epochs=50, validation_data=(X_test, y_test),
-                                        callbacks=[EarlyStopping(patience=20, min_delta=0.00005, restore_best_weights=True)])
+                history = model.fit(X_train, y_train, batch_size=256, epochs=50, validation_data=(X_test, y_test),
+                                    callbacks=[EarlyStopping(patience=20, min_delta=0.00005, restore_best_weights=True)])
 
                 os.makedirs(basedir + f'/../model_{model_name}/{label}/', exist_ok=True)
                 if model_name == 'xgb':
@@ -212,3 +221,6 @@ for label in labels:
                 ax.set_title(f'{label}')
                 fig.savefig(basedir + f'/../model_{model_name}/{label}/prediction_avg_{w}s_test_date_{chosen}_spercent_{synthetic_percent}.png')
                 plt.close()
+
+                del model
+                gc.collect()
