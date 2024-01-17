@@ -22,6 +22,11 @@ from tensorflow.keras.callbacks import EarlyStopping
 
 import gc
 
+# enable tensorflow memory flow
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+
 
 class MinMaxScalerLayer(tf.keras.layers.Layer):
     def __init__(self, feature_range=(0, 1), **kwargs):
@@ -117,6 +122,8 @@ for label in labels:
 
                 X_train, X_test = X.iloc[train_idx].to_numpy(), X.iloc[test_idx].to_numpy()
                 y_train, y_test = y.iloc[train_idx].label.to_numpy(), y.iloc[test_idx].label.to_numpy()
+
+                tf.keras.backend.clear_session() # release resource associated with previous model
                 model = create_model(X_train, input_shape=X_train.shape[1])
 
                 model.compile(optimizer=Adam(learning_rate=2e-4),
