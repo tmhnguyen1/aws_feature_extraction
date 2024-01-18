@@ -88,11 +88,15 @@ def create_model(X_train, input_shape=500):
     return model
     
 
-basedir = 'D:/lalamove/lalamove/data/Clean_extracted_240115_uncal/train'
-labels = [5, 6, 7]
+basedir = r"C:\Users\tmhnguyen\Documents\lalamove\lalamove\data\Clean_extracted_240115_uncal\train"
+labels = [7, 6]
 model_names = ['ann'] 
 synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
 model_performance = []
+
+seed_value = 123
+tf.random.set_seed(seed_value)
+np.random.seed(seed_value)
 
 
 for label in labels:
@@ -108,6 +112,8 @@ for label in labels:
 
     for model_name in model_names:
         dates = y.date.unique()
+        if label == 6:
+            dates = dates[len(dates)//2:]
         for chosen in dates:
             for synthetic_percent in synthetic_percent_list:
                 print('\n\nmodel_name: ', model_name)
