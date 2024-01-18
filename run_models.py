@@ -75,20 +75,20 @@ def create_model(X_train, input_shape=500):
     scaled_inputs = scaler(inputs)
     x = Dense(500, activation='relu')(scaled_inputs)
     x = Dense(200, activation='relu')(x)
-    x = Dropout(0.3)(x)
+    x = Dropout(0.1)(x)
     x = Dense(300, activation='relu')(x)
-    x = Dropout(0.3)(x)
+    x = Dropout(0.1)(x)
     x = Dense(400, activation='relu')(x)
-    x = Dropout(0.3)(x)
+    x = Dropout(0.1)(x)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.3)(x)
+    x = Dropout(0.1)(x)
     x = Dense(50, activation='relu')(x)
     output = Dense(1, activation='sigmoid')(x)
     model = Model(inputs=inputs, outputs=output)
     return model
     
 
-basedir = 'D:/lalamove/lalamove/data/Clean_extracted_240115/train'
+basedir = 'D:/lalamove/lalamove/data/Clean_extracted_240115_uncal/train'
 labels = [5, 6, 7]
 model_names = ['ann'] 
 synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
