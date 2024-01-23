@@ -46,13 +46,13 @@ def create_model(xtrain, input_shape=500):
     scaled_inputs = scaler(inputs)
     x = Dense(500, activation='relu')(scaled_inputs)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.1)(x)
+    x = Dropout(0.3)(x)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.1)(x)
+    x = Dropout(0.3)(x)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.1)(x)
+    x = Dropout(0.3)(x)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.1)(x)
+    x = Dropout(0.3)(x)
     x = Dense(50, activation='relu')(x)
     output = Dense(1, activation='sigmoid')(x)
     model = Model(inputs=inputs, outputs=output)
@@ -109,7 +109,7 @@ for label in labels:
                                 Recall(name='recall')])
 
                 history = model.fit(X_train, y_train, batch_size=256, epochs=50, validation_data=(X_test, y_test),
-                                    callbacks=[EarlyStopping(patience=20, min_delta=0.00005, restore_best_weights=True)])
+                                    callbacks=[EarlyStopping(patience=10, min_delta=0.00005, restore_best_weights=True)])
 
                 os.makedirs(basedir + f'/../model_{model_name}/{label}/', exist_ok=True)
                 if model_name == 'xgb':
