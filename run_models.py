@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from tensorflow.keras import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import BinaryAccuracy, Precision, Recall
-from tensorflow.keras.layers import Input, Dense, Dropout
+from tensorflow.keras.layers import Input, Dense, Dropout, Normalization
 from tensorflow.keras.callbacks import EarlyStopping
 
 import gc
@@ -27,35 +27,6 @@ gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 
-
-class MinMaxScalerLayer(tf.keras.layers.Layer):
-    def __init__(self, feature_range=(0, 1), **kwargs):
-        super(MinMaxScalerLayer, self).__init__(**kwargs)
-        self.feature_range = feature_range
-        self.data_min = None
-        self.data_max = None
-        self.trainable = False # turn off parameter training
-
-    def adapt(self, data):
-        data = tf.convert_to_tensor(data)
-        self.data_min = tf.math.reduce_min(data, axis=0)
-        self.data_max = tf.math.reduce_max(data, axis=0)
-
-    def call(self, inputs):
-        if self.data_min is None or self.data_max is None:
-            raise RuntimeError("The layer has not been adapted. Call 'adapt' before using the layer.")
-        
-        inputs = tf.cast(inputs, dtype=tf.float32)
-        scaled_data = (inputs - tf.cast(self.data_min, dtype=tf.float32)) / (tf.cast(self.data_max, dtype=tf.float32) - tf.cast(self.data_min, dtype=tf.float32))
-        return self.feature_range[0] + (scaled_data * (self.feature_range[1] - self.feature_range[0]))
-
-    def get_config(self):
-        config = super(MinMaxScalerLayer, self).get_config()
-        config.update({
-            "feature_range": self.feature_range
-        })
-        return config
-    
 
 def classify(row):
     true, pred = row.true, row.pred
@@ -68,17 +39,17 @@ def classify(row):
     else:
         return 'False Negative'
     
-def create_model(X_train, input_shape=500):
-    scaler = MinMaxScalerLayer()
-    scaler.adapt(X_train)
+def create_model(xtrain, input_shape=500):
     inputs = Input(shape=input_shape)
+    scaler = Normalization()
+    scaler.adapt(xtrain)
     scaled_inputs = scaler(inputs)
     x = Dense(500, activation='relu')(scaled_inputs)
-    x = Dense(200, activation='relu')(x)
+    x = Dense(100, activation='relu')(x)
     x = Dropout(0.1)(x)
-    x = Dense(300, activation='relu')(x)
+    x = Dense(100, activation='relu')(x)
     x = Dropout(0.1)(x)
-    x = Dense(400, activation='relu')(x)
+    x = Dense(100, activation='relu')(x)
     x = Dropout(0.1)(x)
     x = Dense(100, activation='relu')(x)
     x = Dropout(0.1)(x)
@@ -89,7 +60,7 @@ def create_model(X_train, input_shape=500):
     
 
 basedir = r"C:\Users\tmhnguyen\Documents\lalamove\lalamove\data\Clean_extracted_240115_uncal\train"
-labels = [7, 6]
+labels = [5, 7, 6]
 model_names = ['ann'] 
 synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
 model_performance = []
@@ -112,8 +83,6 @@ for label in labels:
 
     for model_name in model_names:
         dates = y.date.unique()
-        if label == 6:
-            dates = dates[len(dates)//2:]
         for chosen in dates:
             for synthetic_percent in synthetic_percent_list:
                 print('\n\nmodel_name: ', model_name)
@@ -131,6 +100,7 @@ for label in labels:
 
                 tf.keras.backend.clear_session() # release resource associated with previous model
                 model = create_model(X_train, input_shape=X_train.shape[1])
+                print('Normalization layer adapted: ', model.layers[1].is_adapted)
 
                 model.compile(optimizer=Adam(learning_rate=2e-4),
                         loss='binary_crossentropy',
