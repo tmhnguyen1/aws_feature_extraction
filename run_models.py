@@ -45,12 +45,11 @@ def create_model(xtrain, input_shape=500):
     scaler.adapt(xtrain)
     scaled_inputs = scaler(inputs)
     x = Dense(500, activation='relu')(scaled_inputs)
+    x = Dropout(0.3)(x)
+    x = Dense(100, activation='relu')(x)
     x = Dense(100, activation='relu')(x)
     x = Dropout(0.3)(x)
     x = Dense(100, activation='relu')(x)
-    x = Dropout(0.3)(x)
-    x = Dense(100, activation='relu')(x)
-    x = Dropout(0.3)(x)
     x = Dense(100, activation='relu')(x)
     x = Dropout(0.3)(x)
     x = Dense(50, activation='relu')(x)
@@ -60,7 +59,7 @@ def create_model(xtrain, input_shape=500):
     
 
 basedir = r"C:\Users\tmhnguyen\Documents\lalamove\lalamove\data\Clean_extracted_240115_uncal\train"
-labels = [5, 7, 6]
+labels = [6, 7]
 model_names = ['ann'] 
 synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
 model_performance = []
@@ -102,14 +101,14 @@ for label in labels:
                 model = create_model(X_train, input_shape=X_train.shape[1])
                 print('Normalization layer adapted: ', model.layers[1].is_adapted)
 
-                model.compile(optimizer=Adam(learning_rate=2e-4),
+                model.compile(optimizer=Adam(learning_rate=2e-5),
                         loss='binary_crossentropy',
                         metrics=[BinaryAccuracy(name='acc'),
                                 Precision(name='precision'),
                                 Recall(name='recall')])
 
                 history = model.fit(X_train, y_train, batch_size=256, epochs=50, validation_data=(X_test, y_test),
-                                    callbacks=[EarlyStopping(patience=10, min_delta=0.00005, restore_best_weights=True)])
+                                    callbacks=[EarlyStopping(patience=20, min_delta=0.00005, restore_best_weights=True)])
 
                 os.makedirs(basedir + f'/../model_{model_name}/{label}/', exist_ok=True)
                 if model_name == 'xgb':
