@@ -1,10 +1,10 @@
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score
+from imblearn.combine import SMOTEENN
+from sklearn.model_selection import KFold
+
 from xgboost import XGBClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.gaussian_process import GaussianProcessClassifier
+
 import joblib
 
 import xgboost as xgb
@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from tensorflow.keras import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import BinaryAccuracy, Precision, Recall
-from tensorflow.keras.layers import Input, Dense, Dropout, Normalization
+from tensorflow.keras.layers import Input, Dense, Dropout, Normalization, LSTM, Reshape
 from tensorflow.keras.callbacks import EarlyStopping
 
 import gc
@@ -56,12 +56,33 @@ def create_model(xtrain, input_shape=500):
     output = Dense(1, activation='sigmoid')(x)
     model = Model(inputs=inputs, outputs=output)
     return model
+
+# def create_model(xtrain, input_shape=500):
+#     inputs = Input(shape=input_shape)
+#     scaler = Normalization()
+#     scaler.adapt(xtrain)
+#     scaled_inputs = scaler(inputs)
+#     # x = Dense(500, activation='relu')(scaled_inputs)
+#     reshape_input = Reshape((10, input_shape//10))(scaled_inputs)
+#     x = LSTM(64)(reshape_input)  # LSTM layer with 64 units
+#     x = Dense(100, activation='relu')(x)
+#     x = Dropout(0.3)(x)
+#     x = Dense(100, activation='relu')(x)
+#     x = Dropout(0.3)(x)
+#     x = Dense(100, activation='relu')(x)
+#     x = Dropout(0.3)(x)
+#     x = Dense(100, activation='relu')(x)
+#     x = Dropout(0.3)(x)
+#     x = Dense(50, activation='relu')(x)
+#     output = Dense(1, activation='sigmoid')(x)
+#     model = Model(inputs=inputs, outputs=output)
+#     return model
     
 
-basedir = r"C:\Users\tmhnguyen\Documents\lalamove\lalamove\data\Clean_extracted_240115_uncal\train"
-labels = [6, 7]
-model_names = ['ann'] 
-synthetic_percent_list = [0, 0.1, 0.2, 0.4, 0.6, 0.8, 1]
+basedir = r"C:\Users\tmhnguyen\Documents\lalamove\lalamove\data\Clean_extracted_240129_uncal\train"
+labels = [5]
+model_names = ['ann_progressive'] 
+synthetic_percent_list = [0.1, 0.2, 0.4, 0.6, 0.8, 1]
 model_performance = []
 
 seed_value = 123
@@ -80,22 +101,44 @@ for label in labels:
     X = pd.concat(X)
     assert len(X) == len(y), f"Length mismatch {len(X)}, {len(y)}"
 
+
+
     for model_name in model_names:
         dates = y.date.unique()
+        # kf = KFold(n_splits=len(dates) - 1, shuffle=True, random_state=123)
+        # chosen = 0
         for chosen in dates:
+        # for train_index, test_index in kf.split(X):
+            # chosen += 1
+            # print(f'\n\n{chosen}th fold cross validation')
+            # X_train, X_test = X[train_index], X[test_index]
+            # y_train, y_test = y[train_index], y[test_index]        
             for synthetic_percent in synthetic_percent_list:
-                print('\n\nmodel_name: ', model_name)
-                print('\ntest_date ', chosen)
+                print('\nmodel_name: ', model_name)
                 print('\nSynthetic percent: ', synthetic_percent)
-                # chosen = dates[-3]
-                test_idx = y[(y.date == chosen) & (y.type == 0)].index
-                train_idx = y[(y.date != chosen) & (y.type == 0)]
-                train_idx_add = y[(y.date != chosen) & (y.type == 1)].sample(frac=synthetic_percent)
-                train_idx = pd.concat([train_idx, train_idx_add]).index
-                # train_idx = y[y.date != chosen].index
+                print('\ntest_date ', chosen)
+                
+                # test_idx = y[(y.date == chosen) & (y.type == 0)].index
+                # train_idx = y[(y.date != chosen) & (y.type == 0)]
+                # train_idx_add = y[(y.date != chosen) & (y.type == 1)].sample(frac=synthetic_percent)
+                # train_idx = pd.concat([train_idx, train_idx_add]).index
+                # # train_idx = y[y.date != chosen].index
 
-                X_train, X_test = X.iloc[train_idx].to_numpy(), X.iloc[test_idx].to_numpy()
-                y_train, y_test = y.iloc[train_idx].label.to_numpy(), y.iloc[test_idx].label.to_numpy()
+                # X_train, X_test = X.iloc[train_idx].to_numpy(), X.iloc[test_idx].to_numpy()
+                # y_train, y_test = y.iloc[train_idx].label.to_numpy(), y.iloc[test_idx].label.to_numpy()
+
+                test_idx = y[(y.date == chosen) & (y.type == 0)].index
+                train_idx = y[(y.date != chosen) & (y.type == 0)].index
+
+                X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+                y_train, y_test = y.iloc[train_idx].label, y.iloc[test_idx].label
+
+                print('before sampling', y_train.value_counts())
+
+                sme = SMOTEENN(sampling_strategy=synthetic_percent, random_state=42)
+                X_train, y_train = sme.fit_resample(X_train, y_train)
+                
+                print('after sampling', y_train.value_counts())
 
                 tf.keras.backend.clear_session() # release resource associated with previous model
                 model = create_model(X_train, input_shape=X_train.shape[1])
@@ -107,14 +150,14 @@ for label in labels:
                                 Precision(name='precision'),
                                 Recall(name='recall')])
 
-                history = model.fit(X_train, y_train, batch_size=256, epochs=50, validation_data=(X_test, y_test),
-                                    callbacks=[EarlyStopping(patience=20, min_delta=0.00005, restore_best_weights=True)])
+                history = model.fit(X_train, y_train, batch_size=256, epochs=200, validation_data=(X_test, y_test),
+                                    callbacks=[EarlyStopping(patience=50, min_delta=0.00005, restore_best_weights=True)])
 
                 os.makedirs(basedir + f'/../model_{model_name}/{label}/', exist_ok=True)
                 if model_name == 'xgb':
                     model.save_model(basedir + f'/../model_{model_name}/{label}/model_{label}_test_date_{chosen}_spercent_{synthetic_percent}.json')
-                elif model_name == 'ann':
-                    model.save(basedir + f'/../model_{model_name}/{label}/model_{label}_test_date_{chosen}_spercent_{synthetic_percent}.hdf5')
+                elif 'ann' in model_name:
+                    model.save(basedir + f'/../model_{model_name}/{label}/model_{label}_test_date_{chosen}_spercent_{synthetic_percent}')
                 else:
                     joblib.dump(model, basedir + f'/../model_{model_name}/{label}/model_{label}_test_date_{chosen}_spercent_{synthetic_percent}.joblib')
 
@@ -138,7 +181,7 @@ for label in labels:
                 recall_avg = recall_score(y_test, pred)
 
                 model_performance.append([label, model_name, chosen, synthetic_percent, accuracy_train, recall_train, precision_train, accuracy, recall, precision, accuracy_avg, recall_avg, precision_avg])
-                pd.DataFrame(model_performance, columns=['label', 'model_name', 'test_date', 'synthetic_%', 'train_accuracy', 'train_recall', 'train_precision', 'test_accuracy', 'test_recall', 'test_precision', 'test_accuracy_avg', 'test_recall_avg', 'test_precision_avg']).to_csv(basedir + '/../model_performance.csv')
+                pd.DataFrame(model_performance, columns=['label', 'model_name', 'test_date', 'synthetic_%', 'train_accuracy', 'train_recall', 'train_precision', 'test_accuracy', 'test_recall', 'test_precision', 'test_accuracy_avg', 'test_recall_avg', 'test_precision_avg']).to_csv(basedir + f'/../model_performance_{model_name}.csv')
 
                 # ##################################
                 pred = model.predict(X_test).flatten() >= 0.5
